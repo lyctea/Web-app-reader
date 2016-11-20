@@ -244,7 +244,7 @@
 		
 		<div id="fiction_chapter_title"></div>
 		<div id="fiction_container" class="m-read-content">
-			<h4>javascript</h4>
+			<!--<h4>javascript</h4>
 			<p>JavaScript一种直译式脚本语言，是一种动态类型、弱类型、基于原型的语言，内置支持类型。它的解释器被称为JavaScript引擎，为浏览器的一部分，广泛用于客户端的脚本语言，最早是在HTML（标准通用标记语言下的一个应用）网页上使用，用来给HTML网页增加动态功能。
 				在1995年时，由Netscape公司的Brendan Eich，在网景导航者浏览器上首次设计实现而成。因为Netscape与Sun合作，Netscape管理层希望它外观看起来像Java，因此取名为JavaScript。但实际上它的语法风格与Self及Scheme较为接近。[1] 
 				为了取得技术优势，微软推出了JScript，CEnvi推出ScriptEase，与JavaScript同样可在浏览器上运行。为了统一规格，因为JavaScript兼容于ECMA标准，因此也称为ECMAScript。
@@ -256,7 +256,7 @@
 				跨平台特性，在绝大多数浏览器的支持下，可以在多种平台下运行（如Windows、Linux、Mac、Android、iOS等）。
 			</p>
 			<p>Javascript脚本语言同其他语言一样，有它自身的基本数据类型，表达式和算术运算符及程序的基本程序框架。Javascript提供了四种基本的数据类型和两种特殊数据类型用来处理数据和文字。而变量提供存放信息的地方，表达式则可以完成较复杂的信息处理。
-			</p>
+			</p>-->
 		</div>
 		<div class="m-button-bar">
 			<ul class="u-tab">
@@ -348,7 +348,7 @@
 						success : function(result){
 							var data = $.base64.decode(result); 
 							var json = decodeURIComponent(escape(data));
-							duokan_fiction_chapter(data);
+							callback(json);
 						}
 					});
 				};
@@ -369,6 +369,8 @@
 			var Win = $(window);
 			var Doc = $(document);
 			var RootContainer = $('#fiction_container');
+			var readerModel;
+			var readerUI;
 			
 			var initFontSize = Util.StorageGetter('font_size');
 			initFontSize = parseInt(initFontSize);
@@ -387,24 +389,33 @@
 			
 			function main(){
 				//todo 整个项目的入口函数
-				var readerModel = ReaderModel();
-				readerModel.init();
+				readerModel = ReaderModel();
+				readerUI = ReaderBaseFrame(RootContainer);
+				readerModel.init(function(data){
+					readerUI(data);
+				});
 				EventHanlder();
 			}
 			function ReaderModel(){
 				//todo 实现和阅读器相关的数据交互的方法
 				var Chapter_id;
-				var init = function(){
+				var ChapterTotal;
+				var init = function(UIcallback){
 					getFictionInfo(function(){
-						getCurChapterContent(Chapter_id,function(){
+						getCurChapterContent(Chapter_id,function(data){
 							//todo...
+							UIcallback && UIcallback(data)
 						});
 					});
 				};
 				var getFictionInfo = function(callback){
 					$.get('data/chapter.json',function(data){
 						//todo 获得章节信息的回调
-						Chapter_id = data.chapters[1].chapter_id; 
+						Chapter_id = Util.StorageGetter('last_chapter_id',Chapter_id);
+						if(Chapter_id == null){
+							Chapter_id = data.chapters[1].chapter_id; 
+						}
+						ChapterTotal = data.chapters.length;						
 						callback && callback();   
 						/*if(callback){  callback && callback();等同于
 							callback();
@@ -412,7 +423,7 @@
 					},'json');
 				};
 				
-				var getCurChapterContent = function(chapter_id,data){
+				var getCurChapterContent = function(chapter_id,callback){
 					$.get('data/data' + chapter_id + '.json',function(data){
 						if(data.result == 0){
 							var url = data.jsonp;
@@ -420,16 +431,48 @@
 								callback && callback(data);  
 							});
 						}
-					},'json');
-				};
+					},'json')
+				}
+				var prevChapter = function(UIcallback){
+					Chapter_id = parseInt(Chapter_id,10);
+					if(Chapter_id == 0){
+						return;
+					}
+					Chapter_id -= 1;
+					getCurChapterContent(Chapter_id,UIcallback);
+					Util.StorageSetter('last_chapter_id',Chapter_id);
+				}
+				var nextChapter = function(UIcallback){
+					Chapter_id = parseInt(Chapter_id);
+					if(Chapter_id == ChapterTotal){
+						return;
+					}
+					Chapter_id += 1;
+					getCurChapterContent(Chapter_id,UIcallback);
+					Util.StorageSetter('last_chapter_id',Chapter_id);
+				}
 				return{
-					init: init
+					init : init,
+					prevChapter : prevChapter,
+					nextChapter : nextChapter
 				}
 			}
 			
 			
-			function ReaderBaseFrame(){
+			function ReaderBaseFrame(container){
 				//todo 渲染基本的UI结构
+				function parseChapterData(jsonData){
+					var jsonObj = JSON.parse(jsonData);
+					var html = '<h4>' + jsonObj.t + '</h4>';
+					for (var i=0;i<jsonObj.p.length;i++) {
+						html += '<p>' + jsonObj.p[i] + '</p>';
+					}
+					return html;
+				}
+				return function(data){
+					container.html(parseChapterData(data));
+				}
+				
 			}
 			function EventHanlder(){
 				//todo 交互的事件绑定
@@ -486,6 +529,20 @@
 					Dom.font_container.hide();
 					Dom.font_button.removeClass('current');
 				});
+				
+				//绑定上下章节按钮
+				$('#prev-button').click(function(data){
+					//todo 获得章节的翻页数据-->把数据拿出来渲染
+					readerModel.prevChapter(function(data){
+						readerUI(data);
+					});
+				})
+				$('#nextt-button').click(function(){
+					//todo 获得章节的翻页数据-->把数据拿出来渲染
+					readerModel.nextChapter(function(data){
+						readerUI(data);
+					});
+				})
 			}
 			
 			main();
